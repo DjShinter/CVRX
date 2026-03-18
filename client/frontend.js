@@ -59,6 +59,15 @@ import {
     resetUserContentCache
 } from './astrolib/user_content.js';
 import { loadCategoriesManager } from './astrolib/categories_manager.js';
+import {
+    initializeGroupsModule,
+    loadGroups,
+    initializeGroupsPage,
+    setupGroupsTextFilter,
+    setupGroupsFilterButtons,
+    setupGroupsRefreshButton,
+    showGroupDetails,
+} from './astrolib/groups.js';
 
 // ===========
 // GLOBAL VARS
@@ -284,6 +293,14 @@ function swapNavPages(page) {
             // Initialize props page
             initializePropsPage();
             break;
+        case 'groups':
+            // Groups uses invoke (not send), so we handle loading directly
+            const groupsDisplay = document.querySelector('#display-groups');
+            if (!groupsDisplay.hasAttribute('loaded-groups')) {
+                loadGroups();
+            }
+            initializeGroupsPage();
+            break;
     }
 
     // Hide the loading screen
@@ -480,6 +497,10 @@ window.API.onHomePage((_event) => {
     setupWorldsTextFilter();
     // Setup props text filter
     setupPropsTextFilter();
+    // Setup groups text filter and buttons
+    setupGroupsTextFilter();
+    setupGroupsFilterButtons();
+    setupGroupsRefreshButton();
     // Setup friend activity filter
     setupFriendActivityFilter();
     
@@ -748,7 +769,13 @@ window.API.onGetActiveUser((_event, activeUser) => {
         ShowDetailsWrapper,
         DetailsType
     });
-    
+
+    // Initialize the groups module with dependencies
+    initializeGroupsModule({
+        ShowDetailsWrapper,
+        DetailsType
+    });
+
     // Update the current active user in the friends module
     updateCurrentActiveUser(activeUser);
 
@@ -1252,7 +1279,8 @@ searchBar.addEventListener('keypress', async (event) => {
         || searchTerm.startsWith('a+') // Avatar
         || searchTerm.startsWith('p+') // Prop
         || searchTerm.startsWith('i+') // Instance
-        || searchTerm.startsWith('u+')) // User
+        || searchTerm.startsWith('u+') // User
+        || searchTerm.startsWith('g+')) // Group
     {
         prefix = searchTerm.slice(0, 2); // Prefix
         if (prefix === 'i+') {
@@ -1265,14 +1293,6 @@ searchBar.addEventListener('keypress', async (event) => {
 
     // If the search is a valid GUID, show the details
     if (prefix !== null && guidPart !== null) {
-        const typeMap = {
-            'w+': DetailsType.World,
-            'a+': DetailsType.Avatar,
-            'p+': DetailsType.Prop,
-            'i+': DetailsType.Instance,
-            'u+': DetailsType.User
-        };
-
         try {
             // Show loading state
             document.querySelector('.search-status').classList.add('hidden');
@@ -1280,12 +1300,23 @@ searchBar.addEventListener('keypress', async (event) => {
             document.querySelector('.search-loading').classList.remove('hidden');
             hideAllSearchCategories();
 
-            // Attempt to show details for the GUID
-            await ShowDetailsWrapper(typeMap[prefix], guidPart);
-            
+            if (prefix === 'g+') {
+                // Groups use their own overlay
+                await showGroupDetails(guidPart);
+            } else {
+                const typeMap = {
+                    'w+': DetailsType.World,
+                    'a+': DetailsType.Avatar,
+                    'p+': DetailsType.Prop,
+                    'i+': DetailsType.Instance,
+                    'u+': DetailsType.User
+                };
+                await ShowDetailsWrapper(typeMap[prefix], guidPart);
+            }
+
             // Clear the search bar after successful search
             searchBar.value = '';
-            
+
             // Hide loading state
             document.querySelector('.search-loading').classList.add('hidden');
             return;
@@ -1338,11 +1369,13 @@ searchBar.addEventListener('keypress', async (event) => {
         const searchOutputWorlds = document.querySelector('.search-output--worlds');
         const searchOutputAvatars = document.querySelector('.search-output--avatars');
         const searchOutputProps = document.querySelector('.search-output--props');
+        const searchOutputGroups = document.querySelector('.search-output--groups');
 
         const userResults = [];
         const worldsResults = [];
         const avatarResults = [];
         const propsResults = [];
+        const groupResults = [];
 
         // Create the search result elements
         for (const result of results) {
@@ -1466,17 +1499,62 @@ searchBar.addEventListener('keypress', async (event) => {
             }
         }
 
+        // Search groups locally (filter user's owned+joined groups by name)
+        try {
+            const myGroups = await window.API.getMyGroups();
+            const allGroups = [
+                ...(myGroups?.owned || []),
+                ...(myGroups?.member || []),
+            ];
+            const searchLower = searchTerm.toLowerCase();
+            const matchedGroups = allGroups.filter(g =>
+                g.name && g.name.toLowerCase().includes(searchLower)
+            );
+
+            for (const group of matchedGroups) {
+                const groupNode = createElement('div', {
+                    className: 'search-output--node',
+                    innerHTML: `
+                        <div class="thumbnail-container">
+                            <img src="img/ui/placeholder.png" data-hash="${group.imageHash || ''}" class="hidden"/>
+                        </div>
+                        <div class="search-result-content">
+                            <p class="search-result-name">${group.name}</p>
+                            <p class="search-result-type">group</p>
+                            <div class="search-result-detail">
+                                <span class="material-symbols-outlined">group</span>${group.memberCount || 0} members
+                            </div>
+                        </div>
+                    `,
+                });
+
+                const thumbnailContainer = groupNode.querySelector('.thumbnail-container');
+                thumbnailContainer.style.backgroundImage = 'url(\'img/ui/placeholder.png\')';
+                thumbnailContainer.style.backgroundSize = 'cover';
+                if (group.imageHash) {
+                    thumbnailContainer.dataset.hash = group.imageHash;
+                }
+
+                groupNode.onclick = () => showGroupDetails(group.id);
+                groupResults.push(groupNode);
+            }
+        } catch (_err) {
+            log('Failed to search groups locally');
+        }
+
         // Replace previous search results with the new ones
         searchOutputUsers.replaceChildren(...userResults);
         searchOutputWorlds.replaceChildren(...worldsResults);
         searchOutputAvatars.replaceChildren(...avatarResults);
         searchOutputProps.replaceChildren(...propsResults);
+        searchOutputGroups.replaceChildren(...groupResults);
 
         // Show/hide categories based on results and uncollapse them
         toggleCategoryVisibility('.users-category', userResults.length > 0);
         toggleCategoryVisibility('.worlds-category', worldsResults.length > 0);
         toggleCategoryVisibility('.avatars-category', avatarResults.length > 0);
         toggleCategoryVisibility('.props-category', propsResults.length > 0);
+        toggleCategoryVisibility('.groups-category', groupResults.length > 0);
 
         // Uncollapse all visible categories after search
         document.querySelectorAll('.search-output-category:not(.empty)').forEach(category => {
@@ -1488,9 +1566,10 @@ searchBar.addEventListener('keypress', async (event) => {
         updateCategoryCount('.worlds-category', worldsResults.length);
         updateCategoryCount('.avatars-category', avatarResults.length);
         updateCategoryCount('.props-category', propsResults.length);
+        updateCategoryCount('.groups-category', groupResults.length);
 
         // Show "no results" message if no results found
-        const totalResults = userResults.length + worldsResults.length + avatarResults.length + propsResults.length;
+        const totalResults = userResults.length + worldsResults.length + avatarResults.length + propsResults.length + groupResults.length;
         if (totalResults === 0) {
             document.querySelector('.search-no-results').classList.remove('hidden');
         } else {
