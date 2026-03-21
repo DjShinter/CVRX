@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="project">
+		<email>cvrx@astrodoge.dev</email>
+		<name>CVRX Team</name>
+	</maintainer>
+	<longdescription lang="en">
+		CVRX is a desktop companion application for ChilloutVR that provides
+		friend, world, avatar, and prop management features. Built with Electron,
+		it connects to the ChilloutVR API to offer an enhanced social and content
+		browsing experience outside the game.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">AstroDogeDX/CVRX</remote-id>
+		<bugs-to>https://github.com/AstroDogeDX/CVRX/issues</bugs-to>
+	</upstream>
+</pkgmetadata>
