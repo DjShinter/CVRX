@@ -3,17 +3,14 @@
 
 EAPI=8
 
-inherit xdg-utils
+inherit git-r3 xdg-utils
 
 DESCRIPTION="A friend/world/avatar/prop management app extension to ChilloutVR"
 HOMEPAGE="https://github.com/AstroDogeDX/CVRX"
-SRC_URI="https://github.com/AstroDogeDX/CVRX/archive/refs/tags/v${PV}.tar.gz -> ${P}.tar.gz"
-
-S="${WORKDIR}/CVRX-${PV}"
+EGIT_REPO_URI="https://github.com/AstroDogeDX/CVRX.git"
 
 LICENSE="MIT"
 SLOT="0"
-KEYWORDS="~amd64"
 
 RDEPEND="
 	x11-libs/gtk+:3
@@ -38,7 +35,7 @@ QA_PREBUILT="
 src_prepare() {
 	default
 
-	# Remove preexisting node_modules if present in tarball
+	# Remove preexisting node_modules if present
 	rm -rf "${S}/node_modules" || die
 }
 
